@@ -19,52 +19,284 @@ docker-compose up
 # Main api
 curl http://127.0.0.1:8000
 
+{"message":"no Route matched with those values"}
+```
+
+```
 # Admin api
 curl http://127.0.0.1:8001
 ```
 
-## Enable ....
+## Let's play !
+
+### Glossary
+
+- what is route
+- service
+- upstream
+- target
+- consumer
+- plugins
+
+More info: https://docs.konghq.com/1.0.x/admin-api/
+
+### basic setup
+
+**Feature**: routing
+
+- 2 services pointing to 2 real API
+- 2 route to route the traffic to that API
 
 ```
-# Service
-## create service
-curl -i -H "Content-Type: application/json" -X POST http://127.0.0.1:8001/services -d '{"name":"api1","url":"http://api1:8000"}'
+# Create services
 
-curl -i -H "Content-Type: application/json" -X POST http://127.0.0.1:8001/services -d '{"name":"api2","url":"http://api2:8000"}'
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/services \
+	-d '{"name":"api1","url":"http://api1:8000"}'
 
-# Route
-## add route for service
-curl -i -H "Content-Type: application/json" -X POST http://127.0.0.1:8001/services/api1/routes -d '{"hosts":["example.com"], "paths": ["/api1"]}'
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/services \
+	-d '{"name":"api2","url":"http://api2:8000"}'
+```
 
-curl -i -H "Content-Type: application/json" -X POST http://127.0.0.1:8001/services/api2/routes -d '{"hosts":["example.com"], "paths": ["/api2"]}'
+```
+# Create routes
 
-## test
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/services/api1/routes \
+	-d '{"hosts":["example.com"], "paths": ["/api1"]}'
+
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/services/api2/routes \
+	-d '{"hosts":["example.com"], "paths": ["/api2"]}'
+```
+
+Test:
+- any other URL is rejected
+- any hit of the route works
+
+```
+# Succeed
 curl -i -H 'Host: example.com' http://127.0.0.1:8000/api1
 curl -i -H 'Host: example.com' http://127.0.0.1:8000/api2
+
+# Fails
 curl -i -H 'Host: example.com' http://127.0.0.1:8000/api3
+```
+
+Advanced: routing can be done by:
+- method
+- host
+- path 
+- ...
+
+### Load balancer
+
+**Feature**: Load balancing
+
+- 1 upstream
+- 2 targets
+- 1 service
+- 1 route
+
+```
+# Create upstream
+
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/upstreams \
+	-d '{"name":"upstream_1"}'
+```
+
+```
+# Add targets to upstream
+
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/upstreams/upstream_1/targets \
+	-d '{"target":"api1:8000"}'
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/upstreams/upstream_1/targets \
+	-d '{"target":"api2:8000"}'
+```
+
+```
+# Create service using the upstream
+
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/services \
+	-d '{"name":"upstream","url":"http://upstream_1"}'
+```
+
+```
+# Create route to route to the service
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/services/upstream/routes \
+	-d '{"hosts":["example.com"], "paths": ["/load-balance"]}'
+
+```
+
+Test:
+- alternate response from 1 / 2
+
+```
+curl -i -H 'Host: example.com' http://127.0.0.1:8000/load-balance
+```
+
+### User and access control
+
+**Feature**: access / key
+
+- 2 consumers
+- 2 api keys
+- 2 groups
+- acl plugin installed on each api to allow 1 group
+
+```
+# Create consumers
+
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/consumers \
+	-d '{"username": "user1"}'
+
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/consumers \
+	-d '{"username": "user2"}'
+```
+
+```
+# Create keys (used through as auth-headers)
+
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/consumers/user1/key-auth \
+	-d '{"key": "key-of-user-1"}'
+
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/consumers/user2/key-auth \
+	-d '{"key": "key-of-user-2"}'
+```
+
+```
+# Associate users with groups
+
+# Associate to 1 group only
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/consumers/user1/acls \
+	-d '{"group": "group1"}'
+
+# Associate to 2 groups
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/consumers/user2/acls \
+	-d '{"group": "group1"}'
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/consumers/user2/acls \
+	-d '{"group": "group2"}'
+```
+
+```
+# Apply Auth plugin to service
+
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/services/api1/plugins \
+	-d '{"name": "key-auth", "config": {"key_names": ["api-key"]}}'
+
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/services/api2/plugins \
+	-d '{"name": "key-auth", "config": {"key_names": ["api-key"]}}'
+```
+
+```
+# Apply ACL to service
+
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/services/api1/plugins \
+	-d '{"name": "acl", "config": {"whitelist": ["group1"]}}'
+
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/services/api2/plugins \
+	-d '{"name": "acl", "config": {"whitelist": ["group2"]}}'
+
+```
+
+Test:
+- `/api1` available to user1 & user2 -- unavailable to othere
+- `/api2` available to user 2 only 
+- `/load-balance` still available to all
+
+```
+curl -i -H 'Host: example.com' -H 'api-key: key-of-user-1' http://127.0.0.1:8000/api1
+curl -i -H 'Host: example.com' -H 'api-key: key-of-user-2' http://127.0.0.1:8000/api1
+
+curl -i -H 'Host: example.com' -H 'api-key: key-of-user-1' http://127.0.0.1:8000/api2
+curl -i -H 'Host: example.com' -H 'api-key: key-of-user-2' http://127.0.0.1:8000/api2
+
+curl -i -H 'Host: example.com' -H 'api-key: key-of-user-1' http://127.0.0.1:8000/load-balance
+curl -i -H 'Host: example.com' -H 'api-key: key-of-user-2' http://127.0.0.1:8000/load-balance
+```
+
+Advanced:
+- support of jwt
+- support of basic auth
+- support of sso
+- support of ....
+
+###
+
+Feature: rate limiting
+
+- 1 rate limiting on 1 API
+
+```
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/plugins \
+	-d '{"name": "rate-limiting", "config": {"minute": 10, "hour": 50}}'
+```
+
+Test:
+- user 1: get blocked
+- user 2: still has his quota
+- anonymous: get blocked; user 1/2 still have access
+
+```
+# Reach rate limit threshold
+
+curl -i -H 'Host: example.com' -H 'api-key: key-of-user-1' http://127.0.0.1:8000/api1
+curl -i -H 'Host: example.com' -H 'api-key: key-of-user-2' http://127.0.0.1:8000/api1
+curl -i -H 'Host: example.com' -H 'api-key: key-of-user-1' http://127.0.0.1:8000/load-balance
 
 ab -n 100 -H 'Host: example.com' http://127.0.0.1:8000/api1
-
-# Plugin
-## add rate-limiting plugin for service: api1
-curl -i -H "Content-Type: application/json" -X POST http://127.0.0.1:8001/services/api1/plugins -d '{"name": "rate-limiting", "config": {"minute": 10}}'
-
-ab -n 11 -H 'Host: example.com' http://127.0.0.1:8000/api1
-curl -i -H 'Host: example.com' http://127.0.0.1:8000/api1
-
-## enable key-auth plugin for service: api2
-curl -i -H "Content-Type: application/json" -X POST http://127.0.0.1:8001/services/api2/plugins -d '{"name": "key-auth", "config": {"key_names": ["api-key"]}}'
-
-## test
-curl -i -H 'Host: example.com' http://127.0.0.1:8000/api2
-
-# Consumer
-## add consumer
-curl -i -H "Content-Type: application/json" -X POST http://127.0.0.1:8001/consumers -d '{"username": "api2-consumer"}'
-
-## add api-key for recently created consumer
-curl -i -H "Content-Type: application/json" -X POST http://127.0.0.1:8001/consumers/api2-consumer/key-auth -d '{"key": "KSEhU2VzRNoqK7D9PbJSJZ4o3JqmlMO2"}'
-
-## test
-curl -i -H 'Host: example.com' -H 'api-key: KSEhU2VzRNoqK7D9PbJSJZ4o3JqmlMO2' http://127.0.0.1:8000/api2
 ```
+
+Advanced:
+- rate limit conrtrol from backend (response rate-limit)
+
+### Logs
+
+**Feature**: logs
+
+- hit the APIs
+
+```
+# Add file-log plugin
+
+curl -i -H "Content-Type: application/json" -X POST \
+	http://127.0.0.1:8001/plugins \
+	-d '{"name": "file-log", "config": {"path": "/logs/trace.log"}}'
+```
+
+Test:
+- see the trace logs + extra headers from auth (x-consumer-id for authenticated users)
+
+### Modify requests / responses
+
+**Feature**: transformation
+
+- remove response header (obfuscation)
+- remove request header (security - e.g. x-secret)
+
+```
+```
+
+Test:
+- before: we can see the x-rate-limit
+- after: invisible
+
+
