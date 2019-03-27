@@ -23,13 +23,14 @@ services:
 
   kong_provision:
     image: 'kong:1.0'
-    depends_on: 
+    depends_on:
       - db
     environment:
       KONG_DATABASE: postgres
       KONG_PG_HOST: postgres
     networks:
       - workshop
+    restart: on-failure:3
     command:
       kong migrations bootstrap
 
@@ -55,10 +56,10 @@ services:
 
 
   api1:
-    build: ./api    
+    build: ./api
     # image: 'fake_api'
     container_name: api1
-    volumes: 
+    volumes:
       - type: bind
         source: ./data/api1
         target: /data
@@ -66,15 +67,15 @@ services:
       - workshop
 
   api2:
-    build: ./api    
+    build: ./api
     # image: 'fake_api'
     container_name: api2
-    volumes: 
+    volumes:
       - type: bind
         source: ./data/api2
         target: /data
     networks:
-      - workshop 
+      - workshop
 
 networks:
   workshop: null
