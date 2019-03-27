@@ -39,6 +39,10 @@ services:
       - kong_provision
     restart: always
     container_name: kong
+    volumes:
+      - type: bind
+        source: ./data/kong
+        target: /logs
     environment:
       KONG_DATABASE: postgres
       KONG_PG_HOST: postgres
