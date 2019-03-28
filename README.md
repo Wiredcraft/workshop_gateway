@@ -86,7 +86,7 @@ curl -i -H 'Host: example.com' http://127.0.0.1:8000/api1
 curl -i -H 'Host: example.com' http://127.0.0.1:8000/api2
 
 # Fails
-curl -i -H 'Host: example.com' http://127.0.0.1:8000/api3
+curl -i -H 'Host: example.com' http://127.0.0.1:8000/bad-api
 ```
 
 Advanced: routing can be done by:
@@ -182,12 +182,12 @@ curl -i -H "Content-Type: application/json" -X POST \
 ```
 # Associate users with groups
 
-# Associate to 1 group only
+# Associate user1 to 1 group only
 curl -i -H "Content-Type: application/json" -X POST \
     http://127.0.0.1:8001/consumers/user1/acls \
     -d '{"group": "group1"}'
 
-# Associate to 2 groups
+# Associate user2 to 2 groups
 curl -i -H "Content-Type: application/json" -X POST \
     http://127.0.0.1:8001/consumers/user2/acls \
     -d '{"group": "group1"}'
@@ -227,12 +227,22 @@ Test:
 - `/load-balance` still available to all
 
 ```
+# Fail - missing API key
+curl -i -H 'Host: example.com' http://127.0.0.1:8000/api1 
+curl -i -H 'Host: example.com' http://127.0.0.1:8000/api2
+# Succeed - service still allows public traffic
+curl -i -H 'Host: example.com' http://127.0.0.1:8000/load-balance
+
+# Both succeed - user 1 and 2 belong to group1 and are allowed to api1
 curl -i -H 'Host: example.com' -H 'api-key: key-of-user-1' http://127.0.0.1:8000/api1
 curl -i -H 'Host: example.com' -H 'api-key: key-of-user-2' http://127.0.0.1:8000/api1
 
+# Fails - user 1 does not belong to group2 and is not allowed
 curl -i -H 'Host: example.com' -H 'api-key: key-of-user-1' http://127.0.0.1:8000/api2
+# Succeed - user 2 belongs to group2 and can consume this service
 curl -i -H 'Host: example.com' -H 'api-key: key-of-user-2' http://127.0.0.1:8000/api2
 
+# Both logged in users can also access public routes
 curl -i -H 'Host: example.com' -H 'api-key: key-of-user-1' http://127.0.0.1:8000/load-balance
 curl -i -H 'Host: example.com' -H 'api-key: key-of-user-2' http://127.0.0.1:8000/load-balance
 ```
@@ -267,7 +277,8 @@ curl -i -H 'Host: example.com' -H 'api-key: key-of-user-1' http://127.0.0.1:8000
 curl -i -H 'Host: example.com' -H 'api-key: key-of-user-2' http://127.0.0.1:8000/api1
 curl -i -H 'Host: example.com' -H 'api-key: key-of-user-1' http://127.0.0.1:8000/load-balance
 
-ab -n 100 -H 'Host: example.com' http://127.0.0.1:8000/api1
+# Can also use `ab` for more intense rate limiting
+# ab -n 100 -H 'Host: example.com' http://127.0.0.1:8000/api1
 ```
 
 Advanced:
